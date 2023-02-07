@@ -1,0 +1,41 @@
+mds2iso(1)		  General Commands Manual		 mds2iso(1)
+
+NAME
+       mds2iso - convert MDS+MDF disc images to ISO images
+
+SYNOPSIS
+       mds2iso [-v] -i inputfile.mds -o outputfile.iso
+
+DESCRIPTION
+       mds2iso will convert MDS+MDF disc images to ISO disc images,
+       suitable for burning via wodim, cdrecord, or similar. Only discs
+       with a single mode 1 data track are supported.
+
+OPTIONS
+       -i inputfile.mds
+	      Use inputfile.mds as the input MDS file. The MDF file is
+	      assumed to have the same filename as this, except that the
+	      extension ".mds" replaced with ".mdf".
+
+       -o outputfile.iso
+	      Use outputfile.iso for output.
+
+       -v     Print diagnostic information about the MDS file.
+
+BUGS
+       mds2iso has only been tested on images with a single mode 1 data
+       track.
+
+AUTHOR
+       Jason Benaim <jkbenaim@gmail.com>
+
+COPYRIGHT
+       Copyright © 2023 Jason Benaim.
+       Licensed under the GNU GPL version 3 or later.
+       This is free software; you are free to change and redistribute it.
+       There is NO WARRANTY, to the extent permitted by law.
+
+SEE ALSO
+       wodim(1), cdrecord(1)
+
+								 mds2iso(1)

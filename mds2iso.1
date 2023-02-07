@@ -1,0 +1,36 @@
+'\" -*- coding: UTF-8 -*-
+.TH mds2iso 1
+.SH NAME
+mds2iso \- convert MDS+MDF disc images to ISO images
+.SH SYNOPSIS
+\fBmds2iso\fR [\fB\-v\fR] \fB\-i\fR \fIinputfile.mds\fR \fB\-o\fR \fIoutputfile.iso\fR
+.SH DESCRIPTION
+\fImds2iso\fR will convert MDS+MDF disc images to ISO disc images, suitable
+for burning via \fBwodim\fR, \fBcdrecord\fR, or similar. Only discs with a
+single mode 1 data track are supported.
+.SH OPTIONS
+.TP
+.B \-i \fIinputfile.mds\fR
+Use \fIinputfile.mds\fR as the input MDS file. The MDF file is assumed to have
+the same filename as this, except that the extension ".mds" replaced with
+".mdf".
+.TP
+.B \-o \fIoutputfile.iso\fR
+Use \fIoutputfile.iso\fR for output.
+.TP
+.B \-v
+Print diagnostic information about the MDS file.
+.SH BUGS
+\fBmds2iso\fR has only been tested on images with a single mode 1 data track.
+.SH AUTHOR
+Jason Benaim <jkbenaim@gmail.com>
+.SH COPYRIGHT
+Copyright \(co 2023 Jason Benaim.
+.br
+Licensed under the GNU GPL version 3 or later.
+.br
+This is free software; you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+.SH SEE ALSO
+.BR wodim (1),
+.BR cdrecord (1)
