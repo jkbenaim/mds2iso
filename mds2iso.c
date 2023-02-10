@@ -18,6 +18,7 @@ static void noreturn usage(void);
 
 enum trackmode_e {
 	TM_NONE = 0,
+	TM_DVD = 2,
 	TM_AUDIO = 0xa9,
 	TM_MODE1,
 	TM_MODE2,
@@ -34,12 +35,13 @@ struct trackmode_info_s {
 	bool last;
 } trackmode_infos[] = {
 	{ TM_NONE, 0, 0 },
+	{ TM_DVD, 0x800, 0 },
 	{ TM_AUDIO, 0x930, 0 },
 	{ TM_MODE1, 0x800, 0x10 },
 	{ TM_MODE2, 0x920, 0x10 },
 	{ TM_MODE2_FORM1, 0x800, 0x18 },
 	{ TM_MODE2_FORM2, 0x914, 0x18 },
-	{ TM_MODE2_SUB, 0x990, 0 /* ??? not sure about this one */},
+	{ TM_MODE2_SUB, 0x800, 0x18 },
 	{ .last = true },
 };
 
@@ -59,7 +61,8 @@ const char *mds_mediatype_tostring(const uint16_t mediatype)
 const char *mds_trackmode_tostring(const enum trackmode_e trackmode)
 {
 	switch (trackmode) {
-	case TM_NONE: return "(lead-in)";
+	case TM_NONE: return "(lead-in or lead-out)";
+        case TM_DVD: return "DVD";
 	case TM_AUDIO: return "AUDIO";
 	case TM_MODE1: return "MODE1";
 	case TM_MODE2: return "MODE2";
@@ -266,16 +269,17 @@ int main(int argc, char *argv[])
 			printf("\tfilenames_num: %u\n", datablock.filenames_num);
 			printf("\tfilenames_off: %08x\n", datablock.filenames_off);
 		}
-
-		ti = get_info_for_trackmode(datablock.trackmode);
-		if (ti.last) errx(1, "unknown track mode '%02Xh'", datablock.trackmode);
-
+                
+                if (ti.trackmode == TM_NONE) {
+                        ti = get_info_for_trackmode(datablock.trackmode);
+                        if (ti.last) errx(1, "unknown track mode '%02Xh'", datablock.trackmode);
+		        ti.data_stride = datablock.secsize;
+                }
 		if (verbose) {
 			printf("\tdata_len: %u\n", ti.data_len);
 			printf("\tdata_off: %u\n", ti.data_off);
 		}
 
-		ti.data_stride = datablock.secsize;
 	}
 
 	if (verbose) {
@@ -285,6 +289,10 @@ int main(int argc, char *argv[])
 		printf("data_off: %xh\n", ti.data_off);
 		printf("data_len: %xh\n", ti.data_len);
 	}
+
+        if (ti.trackmode == TM_NONE) {
+                errx(1, "no data track");
+        }
 
 	MappedFile_Close(mds_file);
 	mds_file.data = NULL;
@@ -304,12 +312,12 @@ int main(int argc, char *argv[])
 	size_t checksize = (size_t)ti.data_stride * (size_t)session.sec_last;
 	if (mdf_file.size != checksize)
 		errx(1, "mdf size of %lu is different from expected %lu", mdf_file.size, checksize);
-	
+
 	FILE *out = fopen(outfilename, "w");
 	if (!out) err(1, "couldn't open file for writing");
-	for (unsigned block = 0; block < session.sec_last; block++) {
+	for (size_t block = 0; block < session.sec_last; block++) {
 		size_t sRc;
-		sRc = fwrite(mdf_file.data + ti.data_stride*block + ti.data_off, ti.data_len, 1, out);
+		sRc = fwrite(mdf_file.data + (size_t)ti.data_stride*block + (size_t)ti.data_off, (size_t)ti.data_len, 1, out);
 		if (sRc != 1) err(1, "in fwrite");
 	}
 	rc = fclose(out);
