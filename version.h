@@ -1,2 +1,2 @@
 #pragma once
-#define PROG_VERSION "mds2iso_0.1"
+#define PROG_VERSION "mds2iso_0.2"

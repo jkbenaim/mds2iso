@@ -61,8 +61,8 @@ const char *mds_mediatype_tostring(const uint16_t mediatype)
 const char *mds_trackmode_tostring(const enum trackmode_e trackmode)
 {
 	switch (trackmode) {
-	case TM_NONE: return "(lead-in or lead-out)";
-        case TM_DVD: return "DVD";
+	case TM_NONE: return "(lead-in)";
+	case TM_DVD: return "DVD";
 	case TM_AUDIO: return "AUDIO";
 	case TM_MODE1: return "MODE1";
 	case TM_MODE2: return "MODE2";
@@ -70,6 +70,18 @@ const char *mds_trackmode_tostring(const enum trackmode_e trackmode)
 	case TM_MODE2_FORM2: return "MODE2_FORM2";
 	case TM_MODE2_SUB: return "MODE2 (with subchannels)";
 	default: return "(unknown)";
+	}
+}
+
+bool IsCD(const uint16_t mediatype)
+{
+	switch (mediatype) {
+	case 0:
+	case 1:
+	case 2:
+		return true;
+	default:
+		return false;
 	}
 }
 
@@ -113,12 +125,12 @@ struct session_s {
 	uint32_t sec_first;
 	uint32_t sec_last;
 	uint16_t numsession;
-	uint8_t numdatablocks;
-	uint8_t numdatablocks2;
+	uint8_t numtracks;
+	uint8_t numtracks2;
 	uint16_t track_first;
 	uint16_t track_last;
 	uint32_t _idk10;
-	uint32_t datablock_off;
+	uint32_t track_off;
 } __attribute__((packed));
 
 void session_ntoh(struct session_s *session)
@@ -128,10 +140,10 @@ void session_ntoh(struct session_s *session)
 	session->numsession = le16toh(session->numsession);
 	session->track_first = le16toh(session->track_first);
 	session->track_last = le16toh(session->track_last);
-	session->datablock_off = le32toh(session->datablock_off);
+	session->track_off = le32toh(session->track_off);
 }
 
-struct datablock_s {
+struct track_s {
 	uint8_t trackmode;
 	uint8_t numsubchannels;
 	uint8_t adr;
@@ -147,20 +159,52 @@ struct datablock_s {
 	uint8_t _idk12;
 	char _idk13[0x11];
 	uint32_t sec_first;
-	uint64_t sec_off;	// bytes from begin of .mdf file
+	uint64_t sec_off;	// bytes from beginning of .mdf file
 	uint32_t filenames_num;
 	uint32_t filenames_off;
 	char _idk38[0x18];
 } __attribute__((packed));
 
-void datablock_ntoh(struct datablock_s *datablock)
+void track_ntoh(struct track_s *track)
 {
-	datablock->indexblock_off = le32toh(datablock->indexblock_off);
-	datablock->secsize = le16toh(datablock->secsize);
-	datablock->sec_first = le32toh(datablock->sec_first);
-	datablock->sec_off = le64toh(datablock->sec_off);
-	datablock->filenames_num = le32toh(datablock->filenames_num);
-	datablock->filenames_off = le32toh(datablock->filenames_off);
+	track->indexblock_off = le32toh(track->indexblock_off);
+	track->secsize = le16toh(track->secsize);
+	track->sec_first = le32toh(track->sec_first);
+	track->sec_off = le64toh(track->sec_off);
+	track->filenames_num = le32toh(track->filenames_num);
+	track->filenames_off = le32toh(track->filenames_off);
+}
+
+struct index_s {
+	uint32_t block_first;
+	uint32_t block_last;
+} __attribute__((packed));
+
+void index_ntoh(struct index_s *index)
+{
+	index->block_first = le32toh(index->block_first);
+	index->block_last = le32toh(index->block_last);
+}
+
+uint8_t xchg4(uint8_t a)
+{
+	unsigned lsb = a & 0x0f;
+	unsigned msb = (a & 0xf0) >> 4;
+	return (lsb << 4) | msb;
+}
+
+struct track_s *tracks = NULL;
+unsigned numtracks = 0;
+
+int GetTrackForPoint(unsigned point)
+{
+	if (!tracks) return -1;
+
+	for (unsigned i = 0; i < numtracks; i++) {
+		if (tracks[i].pointno == point) return i;
+	}
+
+	return -1;
 }
 
 int main(int argc, char *argv[])
@@ -178,8 +222,8 @@ int main(int argc, char *argv[])
 	if (sizeof(struct session_s) != 0x18)
 		errx(1, "bad size of struct session_s");
 	
-	if(sizeof(struct datablock_s) != 0x50)
-		errx(1, "bad size of struct datablock_s");
+	if(sizeof(struct track_s) != 0x50)
+		errx(1, "bad size of struct track_s");
 	
 	while ((rc = getopt(argc, argv, "i:o:vV")) != -1)
 		switch (rc) {
@@ -207,14 +251,16 @@ int main(int argc, char *argv[])
 	argv += optind;
 	if (not infilename)
 		usage();
-	if (not outfilename)
-		usage();
 	if (*argv != NULL)
 		usage();
 	
 	struct MappedFile_s mds_file;
 	mds_file = MappedFile_Open(infilename, false);
 	if (!mds_file.data) err(1, "couldn't open '%s' for reading", infilename);
+
+	//
+	// Open up MDS header.
+	//
 
 	struct mds_s mds;
 	memcpy(&mds, mds_file.data, sizeof(mds));
@@ -232,6 +278,10 @@ int main(int argc, char *argv[])
 		printf("dpm off: %08x\n", mds.dpm_off);
 	}
 
+	//
+	// Open session header.
+	//
+
 	struct session_s session;
 	memcpy(&session, mds_file.data + mds.session_off, sizeof(session));
 	session_ntoh(&session);
@@ -241,46 +291,98 @@ int main(int argc, char *argv[])
 		printf("sec_first: %d\n", (int32_t)session.sec_first);
 		printf("sec_last: %d\n", (int32_t)session.sec_last);
 		printf("numsession: %u\n", session.numsession);
-		printf("numdatablocks: %u\n", session.numdatablocks);
-		printf("numdatablocks2: %u\n", session.numdatablocks2);
+		printf("numtracks: %u\n", session.numtracks);
+		printf("numtracks2: %u\n", session.numtracks2);
 		printf("track_first: %u\n", session.track_first);
 		printf("track_last: %u\n", session.track_last);
-		printf("datablock_off: %08x\n", session.datablock_off);
+		printf("track_off: %08x\n", session.track_off);
 	}
 
-	for (unsigned blocknum = 0; blocknum < session.numdatablocks; blocknum++) {
-		struct datablock_s datablock;
-		memcpy(&datablock, mds_file.data + session.datablock_off + blocknum*sizeof(datablock), sizeof(datablock));
-		datablock_ntoh(&datablock);
+	//
+	// Set up track structs.
+	//
 
-		if (verbose) {
-			printf("data block %u\n", blocknum);
-			hexdump(&datablock, sizeof(datablock));
-			printf("\ttrackmode: %s\n", mds_trackmode_tostring(datablock.trackmode));
-			printf("\tnumsubchannels: %u\n", datablock.numsubchannels);
-			printf("\tadr: %02Xh\n", datablock.adr);
-			printf("\ttrackno: %u\n", datablock.trackno);
-			printf("\tpointno: %02Xh\n", datablock.pointno);
-			printf("\tmsf: %u:%u:%u\n", datablock.minute, datablock.second, datablock.frame);
-			printf("\tindexblock_off: %08x\n", datablock.indexblock_off);
-			printf("\tsecsize: %xh\n", datablock.secsize);
-			printf("\tsec_first: %u\n", datablock.sec_first);
-			printf("\tsec_off: %016lx\n", datablock.sec_off);
-			printf("\tfilenames_num: %u\n", datablock.filenames_num);
-			printf("\tfilenames_off: %08x\n", datablock.filenames_off);
-		}
-                
-                if (ti.trackmode == TM_NONE) {
-                        ti = get_info_for_trackmode(datablock.trackmode);
-                        if (ti.last) errx(1, "unknown track mode '%02Xh'", datablock.trackmode);
-		        ti.data_stride = datablock.secsize;
-                }
-		if (verbose) {
-			printf("\tdata_len: %u\n", ti.data_len);
-			printf("\tdata_off: %u\n", ti.data_off);
-		}
+	numtracks = session.numtracks;
+	tracks = calloc(sizeof(struct track_s), numtracks);
+	if (!tracks) err(1, "in calloc");
 
+	for (unsigned tracknum = 0; tracknum < numtracks; tracknum++) {
+		memcpy(&tracks[tracknum], mds_file.data + session.track_off + tracknum*sizeof(struct track_s), sizeof(struct track_s));
+		track_ntoh(&tracks[tracknum]);
 	}
+
+	if (verbose) for (unsigned tracknum = 0; tracknum < numtracks; tracknum++) {
+		struct track_s track = tracks[tracknum];
+
+		printf("track block %2u:\n", tracknum);
+		printf("\tpointno: %02Xh\n", track.pointno);
+
+		switch (track.pointno) {
+		case 0xA0:
+			printf("\tfirst track no: %u\n", track.minute);
+			printf("\tdisk type: %02xh ", track.second);
+			switch (track.second) {
+			case 0x00:	printf("(CD-DA or CD-ROM)\n");	break;
+			case 0x10:	printf("(CD-I)\n");		break;
+			case 0x20:	printf("(CD-ROM XA)\n");	break;
+			default:	printf("(unknown)\n");		break;
+			}
+			break;
+		case 0xA1:
+			printf("\tlast track no: %u\n", track.minute);
+			break;
+		case 0xA2:
+			printf("\tend of disc msf: %02u:%02u:%02u\n",
+				track.minute,
+				track.second,
+				track.frame
+			);
+			break;
+		default:
+			printf("\ttrackmode: %s\n", mds_trackmode_tostring(track.trackmode));
+			printf("\tnumsubchannels: %u\n", track.numsubchannels);
+			printf("\tadr: %02Xh\n", xchg4(track.adr));
+			printf("\ttrackno: %u\n", track.trackno);
+			printf("\tmsf: %02u:%02u:%02u\n", track.minute, track.second, track.frame);
+			printf("\tindexblock_off: %08x\n", track.indexblock_off);
+			printf("\tsecsize: %xh\n", track.secsize);
+			printf("\tsec_first: %u\n", track.sec_first);
+			printf("\tsec_off: %016lx\n", track.sec_off);
+			printf("\tfilenames_num: %u\n", track.filenames_num);
+			printf("\tfilenames_off: %08x\n", track.filenames_off);
+			break;
+		}
+	}
+
+	//
+	// Find the first data track.
+	//
+
+	int datatrack = -1;
+	for (int i = 0; i < numtracks; i++) {
+		if ((tracks[i].trackmode >= TM_MODE1) || (tracks[i].trackmode == TM_DVD)) {
+			datatrack = i;
+			break;
+		}
+	}
+
+	if (datatrack == -1) {
+		errx(1, "no data track found");
+	}
+
+	unsigned numblocks = 0;
+	if (datatrack < (numtracks - 1)) {
+		numblocks = tracks[datatrack + 1].sec_first - tracks[datatrack].sec_first;
+	} else {
+		numblocks = session.sec_last;
+	}
+	printf("%u\n", datatrack);
+	printf("%u\n", numblocks);
+	printf("(%u %u)\n", tracks[datatrack+1].sec_first, tracks[datatrack].sec_first);
+
+	ti = get_info_for_trackmode(tracks[datatrack].trackmode);
+	if (ti.last) errx(1, "unknown track mode '%02Xh'", tracks[datatrack].trackmode);
+	ti.data_stride = tracks[datatrack].secsize;
 
 	if (verbose) {
 		printf("\n");
@@ -290,13 +392,16 @@ int main(int argc, char *argv[])
 		printf("data_len: %xh\n", ti.data_len);
 	}
 
-        if (ti.trackmode == TM_NONE) {
-                errx(1, "no data track");
-        }
-
 	MappedFile_Close(mds_file);
 	mds_file.data = NULL;
 
+	if (not outfilename) {
+		if (verbose == 0) {
+			usage();
+		} else {
+			return EXIT_SUCCESS;
+		}
+	}
 
 	char *mdfname = strdup(infilename);
 	if (!mdfname) err(1, "in strdup");
@@ -309,16 +414,17 @@ int main(int argc, char *argv[])
 		err(1, "couldn't open '%s' for reading", mdfname);
 	free(mdfname);
 
-	size_t checksize = (size_t)ti.data_stride * (size_t)session.sec_last;
-	if (mdf_file.size != checksize)
-		errx(1, "mdf size of %lu is different from expected %lu", mdf_file.size, checksize);
-
 	FILE *out = fopen(outfilename, "w");
 	if (!out) err(1, "couldn't open file for writing");
-	for (size_t block = 0; block < session.sec_last; block++) {
-		size_t sRc;
-		sRc = fwrite(mdf_file.data + (size_t)ti.data_stride*block + (size_t)ti.data_off, (size_t)ti.data_len, 1, out);
-		if (sRc != 1) err(1, "in fwrite");
+	if (ti.data_len == ti.data_stride) {
+		// write the whole file in one go, if we can.
+		fwrite(mdf_file.data, numblocks, ti.data_len, out);
+	} else {
+		for (size_t block = 0; block < numblocks; block++) {
+			size_t sRc;
+			sRc = fwrite(mdf_file.data + (size_t)ti.data_stride*block + (size_t)ti.data_off, (size_t)ti.data_len, 1, out);
+			if (sRc != 1) err(1, "in fwrite");
+		}
 	}
 	rc = fclose(out);
 	if (rc) err(1, "couldn't close file");
