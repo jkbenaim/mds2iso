@@ -23,8 +23,8 @@ OPTIONS
        -v     Print diagnostic information about the MDS file.
 
 BUGS
-       mds2iso has only been tested on images with a single mode 1 data
-       track.
+       mds2iso has only been tested on images with a single data track in
+       one session.
 
 AUTHOR
        Jason Benaim <jkbenaim@gmail.com>
