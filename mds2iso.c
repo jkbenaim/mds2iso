@@ -149,10 +149,13 @@ struct track_s {
 	uint8_t adr;
 	uint8_t trackno;
 	uint8_t pointno;
-	uint32_t _idk4;
-	uint8_t minute;
-	uint8_t second;
+	uint8_t min;
+	uint8_t sec;
 	uint8_t frame;
+	uint8_t zero;	// deceptively named
+	uint8_t pmin;
+	uint8_t psec;
+	uint8_t pframe;
 	/* below are zero-filled for point >= 0xA0 */
 	uint32_t indexblock_off;
 	uint16_t secsize;	// bytes
@@ -269,8 +272,9 @@ int main(int argc, char *argv[])
 	mds_ntoh(&mds);
 
 	if (verbose) {
+		printf("%s\n", PROG_VERSION);
 		hexdump(&mds, sizeof(mds));
-		printf("version: v%u.%u\n", mds.version[0], mds.version[1]);
+		printf("mds version: v%u.%u\n", mds.version[0], mds.version[1]);
 		printf("media: %s\n", mds_mediatype_tostring(mds.mediatype));
 		printf("sessions: %u\n", mds.numsessions);
 		printf("disc off: %08x\n", mds.discstruct_off);
@@ -319,9 +323,10 @@ int main(int argc, char *argv[])
 
 		switch (track.pointno) {
 		case 0xA0:
-			printf("\tfirst track no: %u\n", track.minute);
-			printf("\tdisk type: %02xh ", track.second);
-			switch (track.second) {
+			printf("\tadr: %02Xh\n", xchg4(track.adr));
+			printf("\tfirst track no: %u\n", track.pmin);
+			printf("\tdisk type: %02xh ", track.psec);
+			switch (track.psec) {
 			case 0x00:	printf("(CD-DA or CD-ROM)\n");	break;
 			case 0x10:	printf("(CD-I)\n");		break;
 			case 0x20:	printf("(CD-ROM XA)\n");	break;
@@ -329,27 +334,56 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 0xA1:
-			printf("\tlast track no: %u\n", track.minute);
+			printf("\tadr: %02Xh\n", xchg4(track.adr));
+			printf("\tlast track no: %u\n", track.pmin);
 			break;
 		case 0xA2:
+			printf("\tadr: %02Xh\n", xchg4(track.adr));
 			printf("\tend of disc msf: %02u:%02u:%02u\n",
-				track.minute,
-				track.second,
-				track.frame
+				track.pmin,
+				track.psec,
+				track.pframe
 			);
 			break;
-		default:
+		case 0xB0:
+			printf("\tadr: %02Xh\n", xchg4(track.adr));
+			printf("\tnext session area start: %02u:%02u:%02u\n",
+				track.min,
+				track.sec,
+				track.frame
+			);
+			printf("\tnext session area end: %02u:%02u:%02u\n",
+				track.pmin,
+				track.psec,
+				track.pframe
+			);
+			printf("\ttotal number of adr5 pointers: %u\n",
+				track.zero
+			);
+			break;
+		case 0xC0:
+			printf("\tadr: %02Xh\n", xchg4(track.adr));
+			printf("\tstart of first lead-in: %02u:%02u:%02u\n",
+				track.pmin,
+				track.psec,
+				track.pframe
+			);
+			break;
+		case 0x01 ... 0x99:
 			printf("\ttrackmode: %s\n", mds_trackmode_tostring(track.trackmode));
 			printf("\tnumsubchannels: %u\n", track.numsubchannels);
 			printf("\tadr: %02Xh\n", xchg4(track.adr));
 			printf("\ttrackno: %u\n", track.trackno);
-			printf("\tmsf: %02u:%02u:%02u\n", track.minute, track.second, track.frame);
+			printf("\tmsf: %02u:%02u:%02u\n", track.pmin, track.psec, track.pframe);
 			printf("\tindexblock_off: %08x\n", track.indexblock_off);
 			printf("\tsecsize: %xh\n", track.secsize);
 			printf("\tsec_first: %u\n", track.sec_first);
 			printf("\tsec_off: %016lx\n", track.sec_off);
 			printf("\tfilenames_num: %u\n", track.filenames_num);
 			printf("\tfilenames_off: %08x\n", track.filenames_off);
+			break;
+		default:
+			printf("\tunknown info\n");
 			break;
 		}
 	}
@@ -370,15 +404,17 @@ int main(int argc, char *argv[])
 		errx(1, "no data track found");
 	}
 
+	//
+	// Find length of selected data track.
+	//
 	unsigned numblocks = 0;
-	if (datatrack < (numtracks - 1)) {
+	if ((datatrack < (numtracks - 1)) && (tracks[datatrack + 1].pointno <= 0x99)) {
 		numblocks = tracks[datatrack + 1].sec_first - tracks[datatrack].sec_first;
 	} else {
 		numblocks = session.sec_last;
 	}
 	printf("%u\n", datatrack);
 	printf("%u\n", numblocks);
-	printf("(%u %u)\n", tracks[datatrack+1].sec_first, tracks[datatrack].sec_first);
 
 	ti = get_info_for_trackmode(tracks[datatrack].trackmode);
 	if (ti.last) errx(1, "unknown track mode '%02Xh'", tracks[datatrack].trackmode);
