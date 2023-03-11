@@ -271,6 +271,13 @@ int main(int argc, char *argv[])
 		errx(1, "not an mds file? bad magic in '%s'", infilename);
 	mds_ntoh(&mds);
 
+	if (mds.version[0] > 1) {
+		errx(1, "sorry, mds file version %u.%u not supported",
+			mds.version[0],
+			mds.version[1]
+		);
+	}
+
 	if (verbose) {
 		printf("%s\n", PROG_VERSION);
 		hexdump(&mds, sizeof(mds));
