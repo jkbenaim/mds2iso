@@ -1,7 +1,6 @@
 target  ?= mds2iso
 objects := mds2iso.o hexdump.o mapfile.o
-CFLAGS  += -std=c11
-CFLAGS  += -Og -ggdb -Wall
+CC=c99
 
 .PHONY: all
 all:	$(target) README
