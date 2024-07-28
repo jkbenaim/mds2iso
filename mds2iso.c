@@ -1,16 +1,16 @@
 #define _DEFAULT_SOURCE
-#include "endian.h"
 #include <err.h>
 #include <inttypes.h>
 #include <iso646.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdnoreturn.h>
 #include <string.h>
 #include <unistd.h>
-#include "mapfile.h"
+#include "endian.h"
 #include "hexdump.h"
+#include "mapfile.h"
+#include "stdnoreturn.h"
 #include "version.h"
 
 extern char *__progname;
