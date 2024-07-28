@@ -1,5 +1,5 @@
 #define _DEFAULT_SOURCE
-#include <endian.h>
+#include "endian.h"
 #include <err.h>
 #include <inttypes.h>
 #include <iso646.h>
