@@ -1,5 +1,4 @@
 #define _DEFAULT_SOURCE
-#include <err.h>
 #include <inttypes.h>
 #include <iso646.h>
 #include <stdbool.h>
@@ -8,8 +7,10 @@
 #include <string.h>
 #include <unistd.h>
 #include "endian.h"
+#include "err.h"
 #include "hexdump.h"
 #include "mapfile.h"
+#include "progname.h"
 #include "stdnoreturn.h"
 #include "version.h"
 
@@ -219,6 +220,8 @@ int main(int argc, char *argv[])
 
 	struct trackmode_info_s ti = {0};
 
+	progname_init(argc, argv);
+
 	if (sizeof(struct mds_s) != 0x58)
 		errx(1, "bad size of struct mds_s");
 	
@@ -385,7 +388,7 @@ int main(int argc, char *argv[])
 			printf("\tindexblock_off: %08x\n", track.indexblock_off);
 			printf("\tsecsize: %xh\n", track.secsize);
 			printf("\tsec_first: %u\n", track.sec_first);
-			printf("\tsec_off: %016lx\n", track.sec_off);
+			printf("\tsec_off: %016" PRIx64 "\n", track.sec_off);
 			printf("\tfilenames_num: %u\n", track.filenames_num);
 			printf("\tfilenames_off: %08x\n", track.filenames_off);
 			break;

@@ -1,6 +1,6 @@
 target  ?= mds2iso
-objects := mds2iso.o hexdump.o mapfile.o
-CC=c99
+objects := mds2iso.o hexdump.o mapfile.o err.o progname.o
+#CC=c99
 
 .PHONY: all
 all:	$(target) README
