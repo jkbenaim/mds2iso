@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "endian.h"
 #include "err.h"
@@ -228,6 +229,8 @@ int main(int argc, char *argv[])
 	char *infilename = NULL;
 	char *outfilename = NULL;
 	bool verbose = false;
+	bool force = false;
+	struct stat sb = {0,};
 
 	struct trackmode_info_s ti = {0};
 
@@ -242,8 +245,11 @@ int main(int argc, char *argv[])
 	if(sizeof(struct track_s) != 0x50)
 		errx(1, "bad size of struct track_s");
 	
-	while ((rc = getopt(argc, argv, "i:o:vV")) != -1)
+	while ((rc = getopt(argc, argv, "fi:o:vV")) != -1)
 		switch (rc) {
+		case 'f':
+			force = true;
+			break;
 		case 'i':
 			if (infilename)
 				usage();
@@ -339,7 +345,7 @@ int main(int argc, char *argv[])
 		// Make an entry in 'tracks'.
 		memcpy(&tracks[tracknum], mds_file.data + session.track_off + tracknum*sizeof(struct track_s), sizeof(struct track_s));
 		track_ntoh(&tracks[tracknum]);
-		if (tracks[tracknum].filenames_num != 1) {
+		if (tracks[tracknum].filenames_num > 1) {
 			errx(1, "sorry, can't deal with multiple filenames per track (yet).\nthe number of filenames was: %d", tracks[tracknum].filenames_num);
 		}
 
@@ -480,10 +486,13 @@ int main(int argc, char *argv[])
 	//
 	// Open .MDF file, which contains all the disc data.
 	//
-	struct MappedFile_s mdf_file;
+	struct MappedFile_s mdf_file = {0,};
 
-	// First, try the .MDF filename given within the .MDS file.
-	mdf_file = MappedFile_Open(filenames[datatrack], false);
+	// First, try the .MDF filename given within the .MDS file (if there is one).
+	if (filenames[datatrack])
+		mdf_file = MappedFile_Open(filenames[datatrack], false);
+	
+	// We failed to open the MDF file by its included filename (or none was given).
 	if (!mdf_file.data) {
 		// Opening the file failed. Maybe it was renamed. We know the
 		// name of the .MDS file, so let's see if there's a file with
@@ -525,8 +534,12 @@ int main(int argc, char *argv[])
 
 	if (!mdf_file.data)
 		errx(1, "couldn't find mdf file");
-
-	FILE *out = fopen(outfilename, "w");
+	
+	rc = stat(outfilename, &sb);
+	if ((rc == 0) && !force) {
+		errx(1, "output file '%s' already exists; use -f to force overwrite", outfilename);
+	}
+	FILE *out = fopen(outfilename, "wb");
 	if (!out) err(1, "couldn't open file for writing");
 	if (ti.data_len == ti.data_stride) {
 		// write the whole file in one go, if we can.
