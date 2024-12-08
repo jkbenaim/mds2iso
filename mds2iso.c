@@ -190,6 +190,17 @@ void index_ntoh(struct index_s *index)
 	index->block_last = le32toh(index->block_last);
 }
 
+struct filename_s {
+	uint32_t off;
+	uint8_t format;	// 0: 8-bit chars, 1: 16-bit chars
+	uint8_t _pad5[11];
+} __attribute__((packed));
+
+void filename_ntoh(struct filename_s *fn)
+{
+	fn->off = le32toh(fn->off);
+}
+
 uint8_t xchg4(uint8_t a)
 {
 	unsigned lsb = a & 0x0f;
@@ -319,10 +330,27 @@ int main(int argc, char *argv[])
 	numtracks = session.numtracks;
 	tracks = calloc(sizeof(struct track_s), numtracks);
 	if (!tracks) err(1, "in calloc");
+	char **filenames;
+	filenames = calloc(sizeof(char *), numtracks);
+	if (!filenames) err(1, "in calloc");
 
+	// For each track.
 	for (unsigned tracknum = 0; tracknum < numtracks; tracknum++) {
+		// Make an entry in 'tracks'.
 		memcpy(&tracks[tracknum], mds_file.data + session.track_off + tracknum*sizeof(struct track_s), sizeof(struct track_s));
 		track_ntoh(&tracks[tracknum]);
+		if (tracks[tracknum].filenames_num != 1) {
+			errx(1, "sorry, can't deal with multiple filenames per track (yet).\nthe number of filenames was: %d", tracks[tracknum].filenames_num);
+		}
+
+		// Make an entry in 'filenames'.
+		struct filename_s *fn = (struct filename_s *)(mds_file.data + tracks[tracknum].filenames_off);
+		for (unsigned fn_idx = 0; fn_idx < tracks[tracknum].filenames_num; fn_idx++) {
+			// FIXME: what if there is more than 1 filename for a track?
+			filename_ntoh(&fn[fn_idx]);
+			filenames[tracknum] = strdup(mds_file.data + fn[fn_idx].off);
+			printf("%u/'%s'\n", tracknum, filenames[tracknum]);
+		}
 	}
 
 	if (verbose) for (unsigned tracknum = 0; tracknum < numtracks; tracknum++) {
@@ -449,16 +477,54 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	char *mdfname = strdup(infilename);
-	if (!mdfname) err(1, "in strdup");
-	if (mdfname[strlen(mdfname)-1] != 's')
-		errx(1, "input file name does not end with 's'");
-	mdfname[strlen(mdfname)-1] = 'f';
+	//
+	// Open .MDF file, which contains all the disc data.
+	//
+	struct MappedFile_s mdf_file;
 
-	struct MappedFile_s mdf_file = MappedFile_Open(mdfname, false);
+	// First, try the .MDF filename given within the .MDS file.
+	mdf_file = MappedFile_Open(filenames[datatrack], false);
+	if (!mdf_file.data) {
+		// Opening the file failed. Maybe it was renamed. We know the
+		// name of the .MDS file, so let's see if there's a file with
+		// the same name but .MDF extension.
+
+		warn("couldn't open the MDF file '%s'", tracks[datatrack]);
+		warnx("trying to guess a different name for the MDF filename...");
+
+		// Verify that our .MDS file has a name ending with ".MDS".
+		char *mdfname = strdup(infilename);
+		if (!mdfname) err(1, "in strdup");
+		char *mdfname_ext = strrchr(infilename, '.');
+		if (!mdfname_ext || (strlen(mdfname_ext) != 4))
+			errx(1, "couldn't find mdf file: bad mds filename");
+
+		if (strcmp(mdfname_ext, ".mds") && strcmp(mdfname_ext, ".MDS"))
+			errx(1, "couldn't find mdf file: bad mds filename");
+
+		switch(mdfname_ext[3]) {
+		case 's':	mdfname[strlen(mdfname)-1] = 'f';	break;
+		case 'S':	mdfname[strlen(mdfname)-1] = 'F';	break;
+		default:
+			errx(1, "bad mdfname '%s'", mdfname);
+		}
+
+		mdf_file = MappedFile_Open(mdfname, false);
+		if (!mdf_file.data)
+			err(1, "couldn't open '%s' (second choice)", mdfname);
+		else
+			warnx("MDF file found successfully.");
+		free(mdfname);
+	}
+	for (unsigned i = 0; i < numtracks; i++) {
+		free(filenames[i]);
+		filenames[i] = NULL;
+	}
+	free(filenames);
+	filenames = NULL;
+
 	if (!mdf_file.data)
-		err(1, "couldn't open '%s' for reading", mdfname);
-	free(mdfname);
+		errx(1, "couldn't find mdf file");
 
 	FILE *out = fopen(outfilename, "w");
 	if (!out) err(1, "couldn't open file for writing");
