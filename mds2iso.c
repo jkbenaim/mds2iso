@@ -498,7 +498,7 @@ int main(int argc, char *argv[])
 		// name of the .MDS file, so let's see if there's a file with
 		// the same name but .MDF extension.
 
-		warn("couldn't open the MDF file '%s'", tracks[datatrack]);
+		warn("couldn't open the MDF file '%s'", filenames[datatrack]);
 		warnx("trying to guess a different name for the MDF filename...");
 
 		// Verify that our .MDS file has a name ending with ".MDS".
