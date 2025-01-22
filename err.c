@@ -35,6 +35,7 @@ void vwarnx(const char *fmt, va_list args)
 	if (fmt) {
 		vfprintf(stderr, fmt, args);
 	}
+	fprintf(stderr, "\n");
 }
 
 void err(int eval, const char *fmt, ...)
