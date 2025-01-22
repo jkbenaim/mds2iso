@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
 
 	struct mds_s mds;
 	memcpy(&mds, mds_file.data, sizeof(mds));
-	if (!memcmp(mds.magic, "MEDIA_DESCRIPTOR", sizeof(mds.magic)))
+	if (memcmp(mds.magic, "MEDIA_DESCRIPTOR", sizeof(mds.magic))) // CAN YOU SEE IT NOW, BITCH? -darkmage
 		errx(1, "not an mds file? bad magic in '%s'", infilename);
 	mds_ntoh(&mds);
 
