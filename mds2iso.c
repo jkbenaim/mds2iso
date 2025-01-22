@@ -355,7 +355,6 @@ int main(int argc, char *argv[])
 			// FIXME: what if there is more than 1 filename for a track?
 			filename_ntoh(&fn[fn_idx]);
 			filenames[tracknum] = strdup(mds_file.data + fn[fn_idx].off);
-			printf("%u/'%s'\n", tracknum, filenames[tracknum]);
 		}
 	}
 
@@ -457,8 +456,6 @@ int main(int argc, char *argv[])
 	} else {
 		numblocks = session.sec_last;
 	}
-	printf("%u\n", datatrack);
-	printf("%u\n", numblocks);
 
 	ti = get_info_for_trackmode(tracks[datatrack].trackmode);
 	if (ti.last) errx(1, "unknown track mode '%02Xh'", tracks[datatrack].trackmode);
@@ -498,9 +495,6 @@ int main(int argc, char *argv[])
 		// name of the .MDS file, so let's see if there's a file with
 		// the same name but .MDF extension.
 
-		warn("couldn't open the MDF file '%s'", filenames[datatrack]);
-		warnx("trying to guess a different name for the MDF filename...");
-
 		// Verify that our .MDS file has a name ending with ".MDS".
 		char *mdfname = strdup(infilename);
 		if (!mdfname) err(1, "in strdup");
@@ -520,9 +514,7 @@ int main(int argc, char *argv[])
 
 		mdf_file = MappedFile_Open(mdfname, false);
 		if (!mdf_file.data)
-			err(1, "couldn't open '%s' (second choice)", mdfname);
-		else
-			warnx("MDF file found successfully.");
+			err(1, "couldn't open '%s' or '%s' for reading", filenames[datatrack], mdfname);
 		free(mdfname);
 	}
 	for (unsigned i = 0; i < numtracks; i++) {
